@@ -37,7 +37,10 @@ def main():
             except EOFError:
                 pass
 
-    login_information = {r.__class__: r.login(login_info) for r in retrievers}
+    login_information = {
+        r.__class__: r.login(login_info.get(r.__class__))
+        for r in retrievers
+    }
     with open(login_info_path, 'wb+') as f:
         pickle.dump(login_information, f)
 

@@ -8,7 +8,7 @@ Supported Contact Photo Sources
 -------------------------------
 
 * Facebook
-* Google Contacts
+* Google public profile information
 * GitHub
 * GitLab
 

@@ -1,5 +1,9 @@
+import os
+import urllib.request
 import urllib.parse
 from getpass import getpass
+from time import sleep
+from typing import List, Optional
 
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
@@ -37,7 +41,6 @@ class FacebookRetriever(BaseRetriever):
 
         if cached_login_info:
             for cookie in cached_login_info.get('cookies', []):
-                print(cookie)
                 self.browser.add_cookie(cookie)
             self.browser.refresh()
 
@@ -97,6 +100,8 @@ class FacebookRetriever(BaseRetriever):
             print('FAILED LOGGING IN TO FACEBOOK!')
             return cached_login_info
 
+        self.browser.get(self.FRIENDS_URL)
+
         cached_login_info['cookies'] = self.browser.get_cookies()
         return cached_login_info
 
@@ -104,25 +109,91 @@ class FacebookRetriever(BaseRetriever):
         return urllib.parse.urlparse(self.browser.current_url).path
 
     def _form_exists(self, id_: str) -> bool:
+        return self.find_element(f'form#{id_}') is not None
+
+    def _compute_css_selectors(self, *path):
+        css_selectors = []
+        for element in path:
+            selector = ''
+            if type(element) == tuple:
+                tag_type, props = element
+                selector = tag_type + ''.join(
+                    ['[{k}="{v}"]' for k, v in props.items()])
+            else:
+                selector = element
+            css_selectors.append(selector)
+
+        return ' '.join(css_selectors)
+
+    def _find_elements(
+            self,
+            *path,
+    ) -> List[webdriver.firefox.webelement.FirefoxWebElement]:
         try:
-            self.browser.find_element_by_css_selector(f'form#{id_}')
-            return True
+            return self.browser.find_elements_by_css_selector(
+                self._compute_css_selectors(*path))
         except NoSuchElementException:
-            return False
+            return []
+
+    def _find_element(
+        self,
+        *path,
+    ) -> Optional[webdriver.firefox.webelement.FirefoxWebElement]:
+        try:
+            return self.browser.find_element_by_css_selector(
+                self._compute_css_selectors(*path))
+        except NoSuchElementException:
+            return None
 
     def retrieve(self, user: Contact):
-        self.browser.get(self.FRIENDS_URL)
+        if not self._get_rel_path().endswith('/friends'):
+            self.browser.get(self.FRIENDS_URL)
+            wait(self.browser, 5).until(
+                EC.element_to_be_clickable(
+                    (
+                        By.CSS_SELECTOR,
+                        'input.inputtext[placeholder="Search for your friends"]',
+                    )))
+
+        # Search for the contact.
         search_field = self.browser.find_element_by_css_selector(
             'input.inputtext[placeholder="Search for your friends"]')
+        search_field.send_keys(Keys.CONTROL + 'a')
         search_field.send_keys(user.name)
+        sleep(0.3)
         wait(self.browser, 5).until(
-            EC.text_to_be_present_in_element_value(
+            EC.text_to_be_present_in_element(
                 (By.CSS_SELECTOR, 'div.fbProfileBrowserSummaryBox.phs.pvm'),
-                user.name,
+                # Sometimes there's spaces, and the search bar gets rid of them
+                # in Facebook.
+                user.name.split()[0],
             ))
 
-        result_list = self.browser.find_element_by_css_selector(
-            'div.fbProfileBrowserListContainer')
-        print(result_list)
-        self.browser.find_element_by_css_selector
-        print(result_list.())
+        # If the contact was found, go to their profile.
+        result_list = self._find_elements(
+            'div.fbProfileBrowserListContainer', 'a.name')
+        if len(result_list) == 1:
+            current_url = self.browser.current_url
+            result_list[0].click()
+            wait(self.browser, 15).until(EC.url_changes(current_url))
+            sleep(1)
+
+            profile_image_thumb = self._find_element(
+                '#fbProfileCover', 'a.profilePicThumb', 'img')
+            if not profile_image_thumb:
+                return
+
+            current_url = self.browser.current_url
+            self.browser.execute_script(
+                'arguments[0].click()', profile_image_thumb)
+            wait(self.browser, 15).until(EC.url_changes(current_url))
+
+            profile_image = self._find_element(
+                '#photos_snowlift', 'img.spotlight')
+            if not profile_image:
+                return
+
+            image_data = urllib.request.urlopen(
+                profile_image.get_attribute('src'))
+            with open(os.path.expanduser(f'~/tmp/cps/{user.user_id}.png'), 'wb+') as f:
+                f.write(image_data.read())

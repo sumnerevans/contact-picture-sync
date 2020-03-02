@@ -1,7 +1,9 @@
+import io
 from pathlib import Path
 from typing import List
 
 import vobject
+from PIL import Image
 
 from .base import BaseStore, Contact, Photo, StoreSettings
 
@@ -49,10 +51,23 @@ class FilesystemStore(BaseStore):
                         )
 
                 yield Contact(
-                    'FilesystemStore',
-                    file.stem,
+                    file.absolute(),
                     contact.fn.value,
                     emails,
                     tels,
                     photo,
                 )
+
+    def set_photo(self, contact: Contact, image_data: bytes):
+        with open(contact.user_id) as cf:
+            vcard = vobject.readOne(cf.read())
+
+        image = Image.open(io.BytesIO(image_data))
+
+        photo = vcard.add('photo')
+        photo.type_param = image.format
+        photo.encoding_param = 'b'
+        photo.value = image_data
+
+        with open(contact.user_id, 'w+') as f:
+            f.write(vcard.serialize())

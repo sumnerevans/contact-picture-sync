@@ -118,7 +118,7 @@ class FacebookRetriever(BaseRetriever):
             if type(element) == tuple:
                 tag_type, props = element
                 selector = tag_type + ''.join(
-                    ['[{k}="{v}"]' for k, v in props.items()])
+                    [f'[{k}="{v}"]' for k, v in props.items()])
             else:
                 selector = element
             css_selectors.append(selector)
@@ -145,14 +145,20 @@ class FacebookRetriever(BaseRetriever):
         except NoSuchElementException:
             return None
 
-    def retrieve(self, user: Contact):
+    def retrieve(self, user: Contact) -> Optional[bytes]:
         if not self._get_rel_path().endswith('/friends'):
             self.browser.get(self.FRIENDS_URL)
-            wait(self.browser, 5).until(
+            wait(self.browser, 15).until(
                 EC.element_to_be_clickable(
                     (
                         By.CSS_SELECTOR,
-                        'input.inputtext[placeholder="Search for your friends"]',
+                        self._compute_css_selectors(
+                            (
+                                'input.inputtext',
+                                {
+                                    'placeholder': 'Search for your friends',
+                                },
+                            )),
                     )))
 
         # Search for the contact.
@@ -176,24 +182,42 @@ class FacebookRetriever(BaseRetriever):
             current_url = self.browser.current_url
             result_list[0].click()
             wait(self.browser, 15).until(EC.url_changes(current_url))
-            sleep(1)
 
-            profile_image_thumb = self._find_element(
-                '#fbProfileCover', 'a.profilePicThumb', 'img')
-            if not profile_image_thumb:
-                return
+            profile_image_thumb = None
+            while profile_image_thumb is None:
+                profile_image_thumb = self._find_element(
+                    '#fbProfileCover',
+                    'a.profilePicThumb',
+                    'img',
+                )
+                sleep(0.2)
 
-            current_url = self.browser.current_url
             self.browser.execute_script(
                 'arguments[0].click()', profile_image_thumb)
-            wait(self.browser, 15).until(EC.url_changes(current_url))
 
+            wait(self.browser, 15).until(
+                EC.presence_of_element_located(
+                    (
+                        By.CSS_SELECTOR,
+                        self._compute_css_selectors(
+                            '#photos_snowlift',
+                            ('img.spotlight', {
+                                'aria-busy': 'false'
+                            }),
+                        ))))
             profile_image = self._find_element(
-                '#photos_snowlift', 'img.spotlight')
+                '#photos_snowlift',
+                ('img.spotlight', {
+                    'aria-busy': 'false'
+                }),
+            )
             if not profile_image:
-                return
+                return None
 
-            image_data = urllib.request.urlopen(
-                profile_image.get_attribute('src'))
-            with open(os.path.expanduser(f'~/tmp/cps/{user.user_id}.png'), 'wb+') as f:
-                f.write(image_data.read())
+            try:
+                return urllib.request.urlopen(
+                    profile_image.get_attribute('src')).read()
+            except Exception:
+                pass
+
+        return None

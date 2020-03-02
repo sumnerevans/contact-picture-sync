@@ -45,9 +45,8 @@ def main():
         pickle.dump(login_information, f)
 
     for s in stores:
-        for user in s:
-            potential_photos = list(
-                filter(
-                    lambda x: x is not None,
-                    [r.retrieve(user) for r in retrievers]))
-            pass
+        for contact in s:
+            potential_photos = [r.retrieve(contact) for r in retrievers]
+            if len([x for x in potential_photos if x is not None]) > 0:
+                # TODO handle multiple retrievers
+                s.set_photo(contact, potential_photos[0])

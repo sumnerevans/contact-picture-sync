@@ -43,9 +43,10 @@ setup(
     packages=find_packages(exclude=['tests']),
     install_requires=[
         'mechanicalsoup',
+        'pillow',
+        'requests',
         'selenium',
         'vobject',
-        'requests',
     ],
 
     # To provide executable scripts, use entry points in preference to the

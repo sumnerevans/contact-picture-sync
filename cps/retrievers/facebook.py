@@ -109,9 +109,9 @@ class FacebookRetriever(BaseRetriever):
         return urllib.parse.urlparse(self.browser.current_url).path
 
     def _form_exists(self, id_: str) -> bool:
-        return self.find_element(f'form#{id_}') is not None
+        return self._find_element(f'form#{id_}') is not None
 
-    def _compute_css_selectors(self, *path):
+    def _compute_css_selectors(self, *path) -> str:
         css_selectors = []
         for element in path:
             selector = ''
@@ -148,22 +148,22 @@ class FacebookRetriever(BaseRetriever):
     def retrieve(self, user: Contact) -> Optional[bytes]:
         if not self._get_rel_path().endswith('/friends'):
             self.browser.get(self.FRIENDS_URL)
-            wait(self.browser, 15).until(
-                EC.element_to_be_clickable(
-                    (
-                        By.CSS_SELECTOR,
-                        self._compute_css_selectors(
-                            (
-                                'input.inputtext',
-                                {
-                                    'placeholder': 'Search for your friends',
-                                },
-                            )),
-                    )))
+
+        search_field = None
+        i = 0
+        while i < 100:
+            try:
+                search_field = self.browser.find_element_by_css_selector(
+                    'input.inputtext[placeholder="Search for your friends"]')
+                break
+            except:
+                sleep(0.3)
+                i += 1
+
+        if not search_field:
+            return None
 
         # Search for the contact.
-        search_field = self.browser.find_element_by_css_selector(
-            'input.inputtext[placeholder="Search for your friends"]')
         search_field.send_keys(Keys.CONTROL + 'a')
         search_field.send_keys(user.name)
         sleep(0.3)
@@ -182,6 +182,12 @@ class FacebookRetriever(BaseRetriever):
             current_url = self.browser.current_url
             result_list[0].click()
             wait(self.browser, 15).until(EC.url_changes(current_url))
+            wait(self.browser, 15).until(
+                EC.text_to_be_present_in_element(
+                    (By.CSS_SELECTOR, '#fb-timeline-cover-name a'),
+                    user.name.split()[0],
+                ))
+            sleep(0.5)
 
             profile_image_thumb = None
             while profile_image_thumb is None:
@@ -195,22 +201,27 @@ class FacebookRetriever(BaseRetriever):
             self.browser.execute_script(
                 'arguments[0].click()', profile_image_thumb)
 
-            wait(self.browser, 15).until(
-                EC.presence_of_element_located(
-                    (
-                        By.CSS_SELECTOR,
-                        self._compute_css_selectors(
-                            '#photos_snowlift',
-                            ('img.spotlight', {
-                                'aria-busy': 'false'
-                            }),
-                        ))))
-            profile_image = self._find_element(
-                '#photos_snowlift',
-                ('img.spotlight', {
-                    'aria-busy': 'false'
-                }),
-            )
+            profile_image = None
+            try:
+                wait(self.browser, 15).until(
+                    EC.presence_of_element_located(
+                        (
+                            By.CSS_SELECTOR,
+                            self._compute_css_selectors(
+                                '#photos_snowlift',
+                                ('img.spotlight', {
+                                    'aria-busy': 'false'
+                                }),
+                            ))))
+                profile_image = self._find_element(
+                    '#photos_snowlift',
+                    ('img.spotlight', {
+                        'aria-busy': 'false'
+                    }),
+                )
+            except:
+                pass
+
             if not profile_image:
                 return None
 

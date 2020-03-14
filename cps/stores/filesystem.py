@@ -1,4 +1,5 @@
 import io
+from base64 import b64decode, b64encode
 from pathlib import Path
 from typing import List
 
@@ -21,7 +22,7 @@ class FilesystemStore(BaseStore):
                 with open(file) as f:
                     try:
                         contact = vobject.readOne(f.read())
-                    except:
+                    except Exception:
                         pass
 
                 emails, tels, photo = [], [], ()
@@ -58,11 +59,42 @@ class FilesystemStore(BaseStore):
                     photo,
                 )
 
+    def prompt_replace(self, prompt_text: str) -> bool:
+        while True:
+            replace = input(prompt_text)
+            if replace in ('', 'N', 'n'):
+                return False
+            if replace in ('Y', 'y'):
+                return True
+
     def set_photo(self, contact: Contact, image_data: bytes):
         with open(contact.user_id) as cf:
             vcard = vobject.readOne(cf.read())
 
         image = Image.open(io.BytesIO(image_data))
+        photos = [c for c in vcard.getChildren() if c.name.lower() == 'photo']
+
+        if len(photos) == 1:
+            # Check if the photo is the same.
+            if image_data == photos[0].value:
+                print('Photos are the same')
+                return
+
+            # If not the same, then check if user wants to override.
+            if not self.prompt_replace(
+                    f'Already have photo for {vcard.fn.value}. Replace? [y/N]: '
+            ):
+                return
+
+        if len(photos) > 1:
+            if not self.prompt_replace(
+                    f'Multiple photos found for {vcard.fn.value}. Replace? [y/N]: '
+            ):
+                return
+
+        # Remove all old photos:
+        for child in photos:
+            vcard.remove(child)
 
         photo = vcard.add('photo')
         photo.type_param = image.format

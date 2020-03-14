@@ -46,7 +46,12 @@ def main():
 
     for s in stores:
         for contact in s:
-            potential_photos = [r.retrieve(contact) for r in retrievers]
+            potential_photos = []
+            for r in retrievers:
+                try:
+                    potential_photos.append(r.retrieve(contact))
+                except:
+                    pass
             if len([x for x in potential_photos if x is not None]) > 0:
                 # TODO handle multiple retrievers
                 s.set_photo(contact, potential_photos[0])
